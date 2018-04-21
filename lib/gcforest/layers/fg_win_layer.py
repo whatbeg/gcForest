@@ -48,7 +48,7 @@ class FGWinLayer(BaseLayer):
         #assert(self.cv_policy in CV_POLICYS)
         assert len(self.bottom_names) >= 2
         assert len(self.est_configs) == len(self.top_names), "Each estimator shoud produce one unique top"
-        self.eval_metrics = [("predict", accuracy_pb), ("vote", accuracy_win_vote), ("avg", accuracy_win_avg)]
+        self.eval_metrics = [("predict", accuracy_pb)]
         self.estimator1d = [None for ei in range(len(self.est_configs))]
 
     def _init_estimators(self, ei, random_state):
@@ -56,8 +56,19 @@ class FGWinLayer(BaseLayer):
         ei (int): estimator index
         """
         top_name = self.top_names[ei]
+        lis = top_name.split('/')
+        if lis[1] in ['7x7', '8x8']:
+            win = 0
+        elif lis[1] in ['10x10', '11x11']:
+            win = 1
+        else:
+            win = 2
+        if lis[2] == 'ets':
+            est = 0
+        else:
+            est = 1
         est_args = self.est_configs[ei].copy()
-        est_name ="{}/{}_folds".format(top_name, est_args["n_folds"])
+        est_name ="win-{}-estimator-{}-{}folds".format(win, est, est_args["n_folds"])
         # n_folds
         n_folds = int(est_args["n_folds"])
         est_args.pop("n_folds")
@@ -113,7 +124,7 @@ class FGWinLayer(BaseLayer):
                 self.estimator1d[ti] = est
 
     def score(self):
-        eval_metrics = [("predict", accuracy_pb), ("vote", accuracy_win_vote), ("avg", accuracy_win_avg)]
+        eval_metrics = [("predict", accuracy_pb)]
         for ti, top_name in enumerate(self.top_names):
             for phase in ["train", "test"]:
                 y = self.data_cache.get(phase, self.bottom_names[-1])
@@ -123,4 +134,4 @@ class FGWinLayer(BaseLayer):
                 y = y[:,np.newaxis].repeat(y_proba.shape[1], axis=1)
                 for eval_name, eval_metric in eval_metrics:
                     acc = eval_metric(y, y_proba)
-                    LOGGER.info("Accuracy({}.{}.{})={:.2f}%".format(top_name, phase, eval_name, acc*100))
+                    LOGGER.info("Accuracy({}.{}.{})={:.4f}%".format(top_name, phase, eval_name, acc*100))

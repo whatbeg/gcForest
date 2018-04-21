@@ -9,6 +9,7 @@ ATTN2: This package was developed by Mr.Ji Feng(fengj@lamda.nju.edu.cn). The rea
 import numpy as np
 import os, os.path as osp
 import sys
+from joblib import Parallel, delayed
 from .ds_base import ds_base, get_dataset_base, get_dataset_cache_base
 
 DEFAULT_DATA_BASE = osp.abspath( osp.join(get_dataset_base(),'gtzan','genres') )

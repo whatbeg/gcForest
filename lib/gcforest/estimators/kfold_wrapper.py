@@ -143,7 +143,7 @@ class KFoldWrapper(object):
             return
         for (eval_name, eval_metric) in eval_metrics:
             accuracy = eval_metric(y_true, y_proba)
-            LOGGER.info("Accuracy({}.{}.{})={:.2f}%".format(est_name, y_name, eval_name, accuracy * 100.))
+            LOGGER.info("Accuracy({}.{}.{})={:.4f}%".format(est_name, y_name, eval_name, accuracy * 100.))
 
     def predict_proba(self):
         ## check top cache

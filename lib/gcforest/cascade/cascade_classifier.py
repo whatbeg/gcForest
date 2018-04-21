@@ -27,13 +27,19 @@ def check_dir(path):
 
 def calc_accuracy(y_true, y_pred, name, prefix=""):
     acc = 100. * np.sum(np.asarray(y_true)==y_pred) / len(y_true)
-    LOGGER.info('{}Accuracy({})={:.2f}%'.format(prefix, name, acc))
+    LOGGER.info('{}Accuracy({})={:.4f}%'.format(prefix, name, acc))
     return acc
 
 def get_opt_layer_id(acc_list):
     """ Return layer id with max accuracy on training data """
     opt_layer_id = np.argsort(-np.asarray(acc_list), kind='mergesort')[0]
     return opt_layer_id
+
+
+def getmbof(x):
+    if isinstance(x, np.ndarray):
+        return "{:.2f}MB".format(x.itemsize * x.size / 1048576.0)
+    return "{:.2f}MB".format(sys.getsizeof(x) / 1048576.0)
 
 
 class CascadeClassifier(object):
@@ -85,7 +91,7 @@ class CascadeClassifier(object):
 
     def _init_estimators(self, li, ei):
         est_args = self.est_configs[ei].copy()
-        est_name ="layer_{} - estimator_{} - {}_folds".format(li, ei, est_args["n_folds"])
+        est_name = "layer-{}-estimator-{}-{}folds".format(li, ei, est_args["n_folds"])
         # n_folds
         n_folds = int(est_args["n_folds"])
         est_args.pop("n_folds")
@@ -99,7 +105,7 @@ class CascadeClassifier(object):
             random_state = None
         return get_estimator_kfold(est_name, n_folds, est_type, est_args, random_state=random_state)
 
-    def fit_transform(self, X_groups_train, y_train, X_groups_test, y_test, stop_by_test=False):
+    def fit_transform(self, X_groups_train, y_train, X_groups_test, y_test, stop_by_test=True):
         """
         fit until the accuracy converges in early_stop_rounds 
         stop_by_test: (bool)
@@ -131,10 +137,11 @@ class CascadeClassifier(object):
             assert(X_group.shape[0] == n_trains)
             X_group = X_group.reshape(n_trains, -1)
             group_dims.append( X_group.shape[1] )
-            group_starts.append(i if i == 0 else group_starts[i - 1] + group_dims[i])
+            group_starts.append(i if i == 0 else group_ends[i - 1])
             group_ends.append(group_starts[i] + group_dims[i])
             X_train = np.hstack((X_train, X_group))
-        LOGGER.info("group_dims={}".format(group_dims))
+        LOGGER.info('group_starts={}'.format(group_starts))
+        LOGGER.info('group_dims={}'.format(group_dims))
         for i, X_group in enumerate(X_groups_test):
             assert(X_group.shape[0] == n_tests)
             X_group = X_group.reshape(n_tests, -1)
@@ -158,23 +165,28 @@ class CascadeClassifier(object):
                 if self.max_layers > 0 and layer_id >= self.max_layers:
                     break
                 # Copy previous cascades's probability into current X_cur
-                if layer_id == 0:
-                    # first layer not have probability distribution
-                    X_cur_train = np.zeros((n_trains, 0), dtype=np.float32)
-                    X_cur_test = np.zeros((n_tests, 0), dtype=np.float32)
-                else:
-                    X_cur_train = X_proba_train.copy()
-                    X_cur_test = X_proba_test.copy()
+                # first layer not have probability distribution
+                # if layer_id == 0:
+                X_cur_train = np.zeros((n_trains, 0), dtype=np.float32)
+                X_cur_test = np.zeros((n_tests, 0), dtype=np.float32)
+                # else:
+                #     X_cur_train = X_proba_train.copy()
+                #     X_cur_test = X_proba_test.copy()
                 # Stack data that current layer needs in to X_cur
                 look_indexs = look_indexs_cycle[layer_id % len(look_indexs_cycle)]
                 for _i, i in enumerate(look_indexs):
                     X_cur_train = np.hstack((X_cur_train, X_train[:,group_starts[i]:group_ends[i]]))
                     X_cur_test = np.hstack((X_cur_test, X_test[:,group_starts[i]:group_ends[i]]))
+                if layer_id > 0:
+                    X_cur_train = np.hstack((X_cur_train, X_proba_train))
+                    X_cur_test = np.hstack((X_cur_test, X_proba_test))
                 LOGGER.info("[layer={}] look_indexs={}, X_cur_train.shape={}, X_cur_test.shape={}".format(
                     layer_id, look_indexs, X_cur_train.shape, X_cur_test.shape))
+                LOGGER.info("[layer={}] look_indexs={}, X_cur_train.size={}, X_cur_test.size={}".format(
+                    layer_id, look_indexs, getmbof(X_cur_train), getmbof(X_cur_test)))
                 # Fit on X_cur, predict to update X_proba
-                y_train_proba_li = np.zeros((y_train.shape[0], n_classes))
-                y_test_proba_li = np.zeros((y_test.shape[0], n_classes))
+                y_train_proba_li = np.zeros((y_train.shape[0], n_classes), dtype=np.float32)
+                y_test_proba_li = np.zeros((y_test.shape[0], n_classes), dtype=np.float32)
                 for ei, est_config in enumerate(self.est_configs):
                     est = self._init_estimators(layer_id, ei)
                     # fit_trainsform
@@ -193,7 +205,6 @@ class CascadeClassifier(object):
                 test_avg_acc = calc_accuracy(y_test, np.argmax(y_test_proba_li, axis=1), 'layer_{} - test.classifier_average'.format(layer_id))
                 train_acc_list.append(train_avg_acc)
                 test_acc_list.append(test_avg_acc)
-
                 opt_layer_id = get_opt_layer_id(test_acc_list if stop_by_test else train_acc_list)
                 # set opt_datas
                 if opt_layer_id == layer_id:
@@ -201,7 +212,7 @@ class CascadeClassifier(object):
                 # early stop
                 if self.early_stopping_rounds > 0 and layer_id - opt_layer_id >= self.early_stopping_rounds:
                     # log and save final result (opt layer)
-                    LOGGER.info("[Result][Optimal Level Detected] opt_layer_id={}, accuracy_train={:.2f}%, accuracy_test={:.2f}%".format(
+                    LOGGER.info("[Result][Optimal Level Detected] opt_layer_id={}, accuracy_train={:.4f}%, accuracy_test={:.4f}%".format(
                         opt_layer_id, train_acc_list[opt_layer_id], test_acc_list[opt_layer_id]))
                     if self.data_save_dir is not None:
                         self.save_data( opt_layer_id, *opt_datas)
@@ -209,11 +220,13 @@ class CascadeClassifier(object):
                 # save opt data if needed
                 if self.data_save_rounds > 0 and (layer_id + 1) % self.data_save_rounds == 0:
                     self.save_data(layer_id, *opt_datas)
+                print()
+                np.savetxt("layer-{}data.txt".format(layer_id), X_proba_test)
                 # inc layer_id
                 layer_id += 1
             opt_datas = [X_cur_train, y_train, X_cur_test, y_test]
             # log and save final result (last layer)
-            LOGGER.info("[Result][Reach Max Layer] max_layer_num={}, accuracy_train={:.2f}%, accuracy_test={:.2f}%".format(
+            LOGGER.info("[Result][Reach Max Layer] max_layer_num={}, accuracy_train={:.4f}%, accuracy_test={:.4f}%".format(
                 self.max_layers, train_acc_list[-1], test_acc_list[-1]))
             if self.data_save_dir is not None:
                 self.save_data( self.max_layers - 1, *opt_datas)

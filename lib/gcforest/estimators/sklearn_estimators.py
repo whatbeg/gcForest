@@ -19,7 +19,7 @@ def forest_predict_batch_size(clf, X):
     free_memory = psutil.virtual_memory().free
     if free_memory < 2e9:
         free_memory = int(2e9)
-    max_mem_size = max(int(free_memory * 0.5), int(8e10))
+    max_mem_size = max(int(free_memory * 0.5), int(2e10))
     mem_size_1 = clf.n_classes_ * clf.n_estimators * 16
     batch_size = (max_mem_size - 1) / mem_size_1 + 1
     if batch_size < 10:

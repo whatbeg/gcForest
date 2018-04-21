@@ -11,7 +11,7 @@ import argparse
 import logging
 import numpy as np
 import json
-
+import time
 sys.path.insert(0, 'lib')
 from gcforest.utils.log_utils import get_logger, update_default_level, update_default_logging_dir
 from gcforest.utils.config_utils import load_json
@@ -37,8 +37,12 @@ if __name__ == '__main__':
 
     data_train = get_dataset(config["dataset"]["train"])
     data_test = get_dataset(config["dataset"]["test"])
-
+    start_time = time.time()
+    # data_train.X = data_train.X[:200]
+    # data_train.y = data_train.y[:200]
+    # data_test.X = data_test.X[:100]
+    # data_test.y = data_test.y[:100]
     cascade = CascadeClassifier(config["cascade"])
     opt_layer_id, X_train, y_train, X_test, y_test = cascade.fit_transform(data_train.X, data_train.y, data_test.X, data_test.y)
-
-    import IPython; IPython.embed()
+    LOGGER.info("time cost = {} s".format(time.time() - start_time))
+    # import IPython; IPython.embed()

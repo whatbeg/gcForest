@@ -11,7 +11,7 @@ import argparse
 import logging
 import numpy as np
 import json
-
+import time
 sys.path.insert(0, 'lib')
 from gcforest.utils.log_utils import get_logger, update_default_level, update_default_logging_dir
 from gcforest.utils.config_utils import load_json
@@ -27,7 +27,7 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
     config = load_json(args.model)
-    update_default_level(logging.DEBUG)
+    update_default_level(logging.INFO)
     if args.log_dir is not None:
         update_default_logging_dir(args.log_dir)
     from gcforest.fgnet import FGNet, FGTrainConfig
@@ -46,15 +46,16 @@ if __name__ == '__main__':
     data_test = get_dataset(config["dataset"]["test"])
 
     net = FGNet(config["net"], train_config.data_cache)
+    data_train.X = data_train.X[:600]
+    data_train.y = data_train.y[:600]
+    data_test.X = data_test.X[:300]
+    data_test.y = data_test.y[:300]
+    start_time = time.time()
+    print('train {} {} {}'.format(data_train.X.shape, data_train.X.dtype, sys.getsizeof(np.asarray(data_train.X))))
     net.fit_transform(data_train.X, data_train.y, data_test.X, data_test.y, train_config)
 
     if args.save_outputs:
         net.save_outputs("train")
         net.save_outputs("test")
-    #prec_ets(1000, X_train_enc, data_train.y, X_test_enc, data_test.y, random_state=0)
-    #prec_ets(2000, X_train_enc, data_train.y, X_test_enc, data_test.y, random_state=0)
-    #prec_xgb(1000, 5, 
-    #        concat_datas(net.get_outputs("train")), data_train.y, 
-    #        concat_datas(net.get_outputs("test")), data_test.y)
-    
-    import IPython; IPython.embed()
+    LOGGER.info("time cost = {} s".format(time.time() - start_time))
+    # import IPython; IPython.embed()
